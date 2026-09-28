@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visor Territorial - Ordenanza SAG</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body, html { height: 100%; margin: 0; font-family: 'Inter', sans-serif; overflow: hidden; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .leaflet-popup-content-wrapper { background: #f8fafc; border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        .leaflet-popup-content { margin: 0; }
+        .leaflet-popup-tip { background: #f8fafc; }
+        .file-input-wrapper input[type="file"] { display: none; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 h-screen flex flex-col md:flex-row">
+
+    <div class="w-full md:w-[400px] lg:w-[450px] bg-slate-900 h-1/2 md:h-full flex flex-col border-r border-slate-700 shadow-2xl z-10">
+        <!-- Cabecera -->
+        <div class="p-6 bg-slate-800 border-b border-slate-700 shrink-0">
+            <h1 class="text-2xl font-bold text-white flex items-center gap-3">
+                <i class="fa-solid fa-scale-balanced text-emerald-400"></i>
+                Visor de Ordenanza GI2
+            </h1>
+            <p class="text-sm text-slate-400 mt-2 leading-relaxed">
+                Régimen de Certificados de Subsistencia para establecimientos preexistentes al COU en San Andrés de Giles.
+            </p>
+        </div>
+
+        <!-- Contenido scrolleable -->
+        <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            
+            <!-- SECCIÓN CRÍTICA: Carga de Archivos Locales -->
+            <div class="bg-sky-900/30 border border-sky-500/30 rounded-xl p-5 mb-4">
+                <h2 class="text-sky-400 font-bold mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-folder-open"></i> Cargar Datos Locales
+                </h2>
+                <p class="text-xs text-slate-300 mb-4">
+                    Para visualizar los establecimientos y polígonos reales, debes cargar tus archivos JSON aquí. Los datos no se suben a internet, se procesan en tu navegador.
+                </p>
+                
+                <div class="space-y-3">
+                    <!-- Input Puntos -->
+                    <div>
+                        <label class="text-xs font-semibold text-slate-400 block mb-1">1. Establecimientos (Ej: ActIntRu...)</label>
+                        <label class="file-input-wrapper w-full flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded cursor-pointer transition-colors">
+                            <i class="fa-solid fa-location-dot text-slate-400"></i>
+                            <span id="label-puntos" class="text-sm truncate">Seleccionar archivo JSON...</span>
+                            <input type="file" accept=".json,.geojson" onchange="handleFileUpload(event, 'puntos', 'label-puntos')">
+                        </label>
+                    </div>
+
+                    <!-- Input Búferes -->
+                    <div>
+                        <label class="text-xs font-semibold text-slate-400 block mb-1">2. Búferes (Ej: BuferActInt...)</label>
+                        <label class="file-input-wrapper w-full flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded cursor-pointer transition-colors">
+                            <i class="fa-solid fa-draw-polygon text-slate-400"></i>
+                            <span id="label-buferes" class="text-sm truncate">Seleccionar archivo JSON...</span>
+                            <input type="file" accept=".json,.geojson" onchange="handleFileUpload(event, 'buferes', 'label-buferes')">
+                        </label>
+                    </div>
+
+                    <!-- Input Zonas COU (Opcional) -->
+                    <div>
+                        <label class="text-xs font-semibold text-slate-400 block mb-1">3. Zonas COU (Opcional)</label>
+                        <label class="file-input-wrapper w-full flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded cursor-pointer transition-colors">
+                            <i class="fa-solid fa-map text-slate-400"></i>
+                            <span id="label-zonas" class="text-sm truncate">Seleccionar archivo JSON...</span>
+                            <input type="file" accept=".json,.geojson" onchange="handleFileUpload(event, 'zonas', 'label-zonas')">
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <section>
+                <h3 class="text-lg font-bold text-emerald-400 mb-3 border-b border-slate-700 pb-2">Clasificación de Subsistencia</h3>
+                <div class="space-y-3">
+                    <div class="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                        <div class="flex justify-between items-start mb-1">
+                            <h4 class="font-bold text-red-400">Tipo A: Precaria / Reconversión</h4>
+                            <span class="text-[10px] bg-red-500/20 text-red-300 px-2 py-0.5 rounded uppercase font-bold">Min. Estabilidad</span>
+                        </div>
+                        <p class="text-sm text-slate-300">A menos de 1.000m del Área Urbana. Prioridad de relocalización. Ante venta, se pierde continuidad.</p>
+                    </div>
+                    <div class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                        <div class="flex justify-between items-start mb-1">
+                            <h4 class="font-bold text-amber-400">Tipo B: Condicionada</h4>
+                            <span class="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded uppercase font-bold">Intermedia</span>
+                        </div>
+                        <p class="text-sm text-slate-300">A más de 1.000m pero en Zonas Complementarias. Revisión periódica ante ventas.</p>
+                    </div>
+                    <div class="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                        <div class="flex justify-between items-start mb-1">
+                            <h4 class="font-bold text-emerald-400">Tipo C: Plena / Consolidada</h4>
+                            <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded uppercase font-bold">Máx. Estabilidad</span>
+                        </div>
+                        <p class="text-sm text-slate-300">Fuera del anillo de 1.000m. Goza de presunción favorable para continuar ante cambio de firma.</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div class="flex-1 relative bg-slate-800">
+        <div id="map" class="w-full h-full"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+
+    <script>
+        // 1. DEFINICIÓN CRÍTICA DE PROYECCIÓN POSGAR 94 FAJA 5 (EPSG:22185)
+        // Esto evita que las coordenadas X=5000000 rompan el mapa y las convierte a WGS84 (-34, -59)
+        proj4.defs("EPSG:22185","+proj=tmerc +lat_0=-90 +lon_0=-60 +k=1 +x_0=5500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs");
+
+        // 2. INICIALIZACIÓN DEL MAPA
+        const map = L.map('map').setView([-34.444, -59.444], 12);
+
+        // Capa Satelital Híbrida
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        }).addTo(map);
+
+        L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/toner-lines/{z}/{x}/{y}{r}.png', {
+            attribution: '',
+            opacity: 0.3
+        }).addTo(map);
+
+        // Capas lógicas
+        const zonasLayer = L.layerGroup().addTo(map);
+        const buffersLayer = L.layerGroup().addTo(map);
+        const pointsLayer = L.layerGroup().addTo(map);
+
+        const layerControl = L.control.layers(null, {
+            "Zonas COU": zonasLayer,
+            "Búferes de Distancia": buffersLayer,
+            "Establecimientos GI2": pointsLayer
+        }, {position: 'topright'}).addTo(map);
+
+        function getBufferStyle(zonaText) {
+            let isUrbana = zonaText.toLowerCase().includes('ru') || zonaText.toLowerCase().includes('urbana');
+            return {
+                color: isUrbana ? '#ef4444' : '#10b981', // Rojo si es zona urbana/Ru, Verde el resto
+                weight: 2,
+                opacity: 0.8,
+                fillColor: isUrbana ? '#ef4444' : '#10b981',
+                fillOpacity: 0.15,
+                dashArray: '5, 5'
+            };
+        }
+
+        // BÚSQUEDA PROFUNDA DE ACTIVIDADES
+        function getPointIcon(attr) {
+            let markerColor = '#64748b'; // Gris (No identificado)
+            let iconClass = 'fa-industry';
+            
+            // Convertimos TODO el objeto de atributos a texto, minúscula, sin tildes.
+            let allText = JSON.stringify(attr).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            
+            if (allText.includes('feedlot') || allText.includes('bovino') || allText.includes('vaca') || allText.includes('tambo') || allText.includes('engorde')) {
+                markerColor = '#ef4444'; // Rojo
+                iconClass = 'fa-cow';
+            } else if (allText.includes('galpon') || allText.includes('ave') || allText.includes('pollo') || allText.includes('avicola') || allText.includes('gallina')) {
+                markerColor = '#3b82f6'; // Azul
+                iconClass = 'fa-warehouse';
+            } else if (allText.includes('cerdo') || allText.includes('porcino') || allText.includes('chancho') || allText.includes('criadero')) {
+                markerColor = '#ec4899'; // Rosa
+                iconClass = 'fa-piggy-bank';
+            } else if (allText.includes('equino') || allText.includes('caballo') || allText.includes('haras')) {
+                markerColor = '#8b5cf6'; // Violeta
+                iconClass = 'fa-horse';
+            } else if (allText.includes('horno') || allText.includes('ladrillo') || allText.includes('ladrillera')) {
+                markerColor = '#f59e0b'; // Naranja
+                iconClass = 'fa-fire';
+            }
+
+            return L.divIcon({
+                className: 'custom-icon',
+                html: `<div style="background-color: ${markerColor}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);">
+                            <i class="fa-solid ${iconClass} text-white text-sm"></i>
+                       </div>`,
+                iconSize: [32, 32],
+                iconAnchor: [16, 16],
+                popupAnchor: [0, -16]
+            });
+        }
+
+        function formatPopupContent(title, iconClass, attr) {
+            let html = `<div class="p-3 w-72 text-slate-800">
+                <h3 class="font-bold text-slate-900 text-lg mb-3 border-b border-slate-200 pb-2 flex items-center gap-2">
+                    <i class="fa-solid ${iconClass} text-sky-600"></i> ${title}
+                </h3>
+                <div class="max-h-60 overflow-y-auto pr-2 space-y-2">`;
+            
+            for (const [key, value] of Object.entries(attr)) {
+                if (value !== null && value !== "" && typeof value !== 'object') {
+                    html += `<div class="text-sm bg-slate-50 p-2 rounded border border-slate-100">
+                        <span class="block text-xs font-bold text-slate-500 uppercase">${key}</span>
+                        <span class="font-medium text-slate-800 break-words">${value}</span>
+                    </div>`;
+                }
+            }
+            html += `</div></div>`;
+            return html;
+        }
+
+        function processPolygons(data, layerGroup, titlePrefix) {
+            let addedFeatures = 0;
+            if (!data.features) return addedFeatures;
+
+            data.features.forEach(feature => {
+                let attr = feature.attributes || feature.properties || {};
+                let geom = feature.geometry;
+                let rawRings = null;
+
+                // Extraer coordenadas dependiendo del formato (GeoJSON o EsriJSON)
+                if (geom && geom.rings) rawRings = geom.rings;
+                else if (geom && geom.type === 'Polygon') rawRings = geom.coordinates;
+                else if (geom && geom.type === 'MultiPolygon') rawRings = geom.coordinates.flat(); 
+
+                if (rawRings) {
+                    let latLngRings = rawRings.map(ring => {
+                        return ring.map(coord => {
+                            // MAGIA DE PROYECCIÓN: Si la coordenada X > 1000, asumimos que es POSGAR y reproyectamos
+                            if (Math.abs(coord[0]) > 1000) { 
+                                let lonLat = proj4("EPSG:22185", "EPSG:4326", [coord[0], coord[1]]);
+                                return [lonLat[1], lonLat[0]]; // Leaflet usa [Lat, Lng]
+                            }
+                            // Si ya es GPS (WGS84), invertimos de [Lng, Lat] a [Lat, Lng]
+                            return [coord[1], coord[0]]; 
+                        });
+                    });
+
+                    // Extraer texto representativo de la zona para el color
+                    let zonaInfo = attr.ZONA || attr.Zona || attr.zona || attr.Name || attr.nombre || 'Desconocida';
+                    let polygon = L.polygon(latLngRings, getBufferStyle(zonaInfo));
+                    
+                    polygon.bindPopup(formatPopupContent(titlePrefix, 'fa-draw-polygon', attr));
+                    layerGroup.addLayer(polygon);
+                    addedFeatures++;
+                }
+            });
+            return addedFeatures;
+        }
+
+        function processPoints(data) {
+            let addedFeatures = 0;
+            if (!data.features) return addedFeatures;
+
+            data.features.forEach(feature => {
+                let attr = feature.attributes || feature.properties || {};
+                let geom = feature.geometry;
+                let lat, lng;
+
+                if (geom && geom.x !== undefined && geom.y !== undefined) {
+                    lng = geom.x; lat = geom.y;
+                } else if (geom && geom.coordinates) {
+                    lng = geom.coordinates[0]; lat = geom.coordinates[1];
+                }
+
+                if (lat !== undefined && lng !== undefined) {
+                    // Reproyectar si es necesario
+                    if (Math.abs(lng) > 1000) {
+                        let lonLat = proj4("EPSG:22185", "EPSG:4326", [lng, lat]);
+                        lng = lonLat[0];
+                        lat = lonLat[1];
+                    }
+
+                    let marker = L.marker([lat, lng], { icon: getPointIcon(attr) });
+                    marker.bindPopup(formatPopupContent('Establecimiento GI2', 'fa-industry', attr));
+                    pointsLayer.addLayer(marker);
+                    addedFeatures++;
+                }
+            });
+            return addedFeatures;
+        }
+
+        function encuadrarMapa() {
+            let bounds = L.latLngBounds([]);
+            if (zonasLayer.getLayers().length > 0) bounds.extend(L.featureGroup(zonasLayer.getLayers()).getBounds());
+            if (buffersLayer.getLayers().length > 0) bounds.extend(L.featureGroup(buffersLayer.getLayers()).getBounds());
+            if (pointsLayer.getLayers().length > 0) bounds.extend(L.featureGroup(pointsLayer.getLayers()).getBounds());
+            
+            if (bounds.isValid()) {
+                map.fitBounds(bounds.pad(0.1));
+            }
+        }
+
+        function handleFileUpload(event, layerType, labelId) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Actualizar etiqueta del botón
+            document.getElementById(labelId).textContent = file.name;
+            document.getElementById(labelId).classList.add('text-emerald-400', 'font-bold');
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    let resultCount = 0;
+
+                    if (layerType === 'puntos') {
+                        pointsLayer.clearLayers(); // Limpiar previa si existe
+                        resultCount = processPoints(data);
+                    } else if (layerType === 'buferes') {
+                        buffersLayer.clearLayers();
+                        resultCount = processPolygons(data, buffersLayer, 'Búfer de Zona');
+                    } else if (layerType === 'zonas') {
+                        zonasLayer.clearLayers();
+                        resultCount = processPolygons(data, zonasLayer, 'Zona COU');
+                    }
+
+                    console.log(`Cargados ${resultCount} elementos en la capa ${layerType}`);
+                    encuadrarMapa();
+
+                } catch (error) {
+                    alert(`Error al procesar el archivo ${file.name}. Asegúrate de que sea un JSON válido.`);
+                    console.error("Error parseando JSON:", error);
+                }
+            };
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>
