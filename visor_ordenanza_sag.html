@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visor Territorial - Ordenanza SAG</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body, html { height: 100%; margin: 0; font-family: 'Inter', sans-serif; overflow: hidden; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        
+        .leaflet-popup-content-wrapper { background: #f8fafc; border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+        .leaflet-popup-content { margin: 0; }
+        .leaflet-popup-tip { background: #f8fafc; }
+        
+        /* Loader de carga automática */
+        .loader-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.9);
+            z-index: 9999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            transition: opacity 0.5s ease;
+        }
+        .spinner {
+            width: 50px; height: 50px;
+            border: 5px solid #334155; border-top-color: #10b981;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 h-screen flex flex-col md:flex-row">
+
+    <div class="w-full md:w-[450px] lg:w-[450px] bg-slate-900 h-1/2 md:h-full flex flex-col border-r border-slate-700 shadow-2xl z-10">
+        <!-- Cabecera -->
+        <div class="p-6 bg-slate-800 border-b border-slate-700 shrink-0">
+            <h1 class="text-2xl font-bold text-white flex items-center gap-3">
+                <i class="fa-solid fa-scale-balanced text-emerald-400"></i>
+                Visor de Ordenanza GI2
+            </h1>
+            <p class="text-sm text-slate-400 mt-2 leading-relaxed">
+                Régimen de Certificados de Subsistencia para establecimientos preexistentes al COU en San Andrés de Giles.
+            </p>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            
+            <section>
+                <h3 class="text-lg font-bold text-emerald-400 mb-4 border-b border-slate-700 pb-2">Clasificación de Subsistencia</h3>
+                <div class="space-y-4">
+                    <div class="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+                        <div class="flex justify-between items-start mb-2">
+                            <h4 class="font-bold text-red-400">Tipo A: Precaria / Reconversión</h4>
+                            <span class="text-[10px] bg-red-500/20 text-red-300 px-2 py-0.5 rounded uppercase font-bold tracking-wider">Min. Estabilidad</span>
+                        </div>
+                        <p class="text-sm text-slate-300">A menos de 1.000m del Área Urbana. Prioridad de relocalización. Ante venta, se pierde continuidad.</p>
+                    </div>
+                    <div class="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                        <div class="flex justify-between items-start mb-2">
+                            <h4 class="font-bold text-amber-400">Tipo B: Condicionada</h4>
+                            <span class="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded uppercase font-bold tracking-wider">Intermedia</span>
+                        </div>
+                        <p class="text-sm text-slate-300">A más de 1.000m pero en Zonas Complementarias. Revisión periódica ante ventas.</p>
+                    </div>
+                    <div class="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                        <div class="flex justify-between items-start mb-2">
+                            <h4 class="font-bold text-emerald-400">Tipo C: Plena / Consolidada</h4>
+                            <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded uppercase font-bold tracking-wider">Máx. Estabilidad</span>
+                        </div>
+                        <p class="text-sm text-slate-300">Fuera del anillo de 1.000m. Goza de presunción favorable para continuar ante cambio de firma.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h3 class="text-lg font-bold text-emerald-400 mb-3 border-b border-slate-700 pb-2">Claves del Articulado</h3>
+                <ul class="text-sm text-slate-300 space-y-3">
+                    <li class="flex gap-3"><i class="fa-solid fa-check text-emerald-400 mt-1"></i> <span><strong>Arts. 1-4:</strong> Alcance restringido. Solo ampara a establecimientos preexistentes al COU.</span></li>
+                    <li class="flex gap-3"><i class="fa-solid fa-file-signature text-sky-400 mt-1"></i> <span><strong>Art. 5:</strong> Requisitos: factibilidad hídrica (ADA), RENSPA y Aptitud Ambiental.</span></li>
+                    <li class="flex gap-3"><i class="fa-solid fa-ban text-red-400 mt-1"></i> <span><strong>Art. 9:</strong> Causales de Caducidad. Cese > 1 año o agravamiento del impacto.</span></li>
+                    <li class="flex gap-3"><i class="fa-solid fa-truck-fast text-violet-400 mt-1"></i> <span><strong>Art. 14:</strong> Relocalización. Fomenta el traslado a futuros "Corredores GI2".</span></li>
+                </ul>
+            </section>
+        </div>
+    </div>
+
+    <div class="flex-1 relative bg-slate-800">
+        <!-- Pantalla de carga automática -->
+        <div id="loader" class="loader-overlay">
+            <div class="spinner mb-4"></div>
+            <h2 class="text-emerald-400 font-bold text-xl">Cargando datos del servidor...</h2>
+            <p class="text-slate-300 text-sm mt-2 text-center max-w-md">Obteniendo establecimientos y zonificación desde GitHub Pages.</p>
+        </div>
+        
+        <div id="map" class="w-full h-full"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+
+    <script>
+        // Definición de proyección POSGAR 94 Faja 5 (EPSG:22185) requerida para los búferes de PBA
+        proj4.defs("EPSG:22185","+proj=tmerc +lat_0=-90 +lon_0=-60 +k=1 +x_0=5500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs");
+
+        // Inicializar el mapa centrado en San Andrés de Giles
+        const map = L.map('map').setView([-34.444, -59.444], 12);
+
+        // Capa Satelital de Esri
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: '&copy; Esri',
+            maxZoom: 18
+        }).addTo(map);
+
+        // Capa de calles (opcional para dar contexto)
+        L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/toner-lines/{z}/{x}/{y}{r}.png', {
+            attribution: '', opacity: 0.3, maxZoom: 18
+        }).addTo(map);
+
+        const zonasLayer = L.layerGroup().addTo(map);
+        const buffersLayer = L.layerGroup().addTo(map);
+        const pointsLayer = L.layerGroup().addTo(map);
+
+        L.control.layers(null, {
+            "Zonas COU": zonasLayer,
+            "Búferes de Distancia": buffersLayer,
+            "Establecimientos GI2": pointsLayer
+        }, {position: 'topright'}).addTo(map);
+
+        // Estilos para los polígonos
+        function getBufferStyle(zonaText) {
+            let isUrbana = (zonaText || "").toLowerCase().includes('ru') || (zonaText || "").toLowerCase().includes('urbana');
+            return {
+                color: isUrbana ? '#ef4444' : '#10b981', // Rojo para zonas urbanas, verde para el resto
+                weight: 2,
+                opacity: 0.8,
+                fillColor: isUrbana ? '#ef4444' : '#10b981',
+                fillOpacity: 0.15,
+                dashArray: '5, 5'
+            };
+        }
+
+        function getPointIcon(attr) {
+            let markerColor = '#64748b'; // Gris por defecto
+            let iconClass = 'fa-industry';
+            
+            // BÚSQUEDA PROFUNDA: Convertimos todos los atributos del punto a un string
+            // Pasamos todo a minúscula y quitamos acentos (tildes) para no fallar
+            let allText = JSON.stringify(attr).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            
+            // Evaluamos palabras clave en todo el contenido del registro
+            if (allText.includes('feedlot') || allText.includes('bovino') || allText.includes('vaca') || allText.includes('tambo') || allText.includes('engorde')) {
+                markerColor = '#ef4444'; // Rojo - Bovinos
+                iconClass = 'fa-cow';
+            } else if (allText.includes('galpon') || allText.includes('ave') || allText.includes('pollo') || allText.includes('avicola') || allText.includes('gallina')) {
+                markerColor = '#3b82f6'; // Azul - Aves
+                iconClass = 'fa-warehouse';
+            } else if (allText.includes('cerdo') || allText.includes('porcino') || allText.includes('chancho') || allText.includes('criadero')) {
+                markerColor = '#ec4899'; // Rosa - Cerdos
+                iconClass = 'fa-piggy-bank';
+            } else if (allText.includes('equino') || allText.includes('caballo') || allText.includes('haras')) {
+                markerColor = '#8b5cf6'; // Violeta - Equinos
+                iconClass = 'fa-horse';
+            } else if (allText.includes('horno') || allText.includes('ladrillo') || allText.includes('ladrillera')) {
+                markerColor = '#f59e0b'; // Naranja - Ladrilleras
+                iconClass = 'fa-fire';
+            }
+
+            return L.divIcon({
+                className: 'custom-icon',
+                html: `<div style="background-color: ${markerColor}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);">
+                            <i class="fa-solid ${iconClass} text-white text-sm"></i>
+                       </div>`,
+                iconSize: [32, 32],
+                iconAnchor: [16, 16],
+                popupAnchor: [0, -16]
+            });
+        }
+
+        // Generador de Popups HTML
+        function formatPopupContent(title, iconClass, attr) {
+            let html = `<div class="p-3 w-72 text-slate-800">
+                <h3 class="font-bold text-slate-900 text-lg mb-3 border-b border-slate-200 pb-2 flex items-center gap-2">
+                    <i class="fa-solid ${iconClass} text-sky-600"></i> ${title}
+                </h3>
+                <div class="max-h-60 overflow-y-auto pr-2 space-y-2">`;
+            
+            for (const [key, value] of Object.entries(attr)) {
+                // Solo muestra campos que tengan datos
+                if (value !== null && value !== "" && typeof value !== 'object') {
+                    html += `<div class="text-sm bg-slate-50 p-2 rounded border border-slate-100">
+                        <span class="block text-xs font-bold text-slate-500 uppercase">${key}</span>
+                        <span class="font-medium text-slate-800 break-words">${value}</span>
+                    </div>`;
+                }
+            }
+            html += `</div></div>`;
+            return html;
+        }
+
+        function processPolygons(data, layerGroup, titlePrefix) {
+            if (!data.features) return;
+            data.features.forEach(feature => {
+                let attr = feature.attributes || feature.properties || {};
+                let geom = feature.geometry;
+                let rawRings = null;
+
+                if (geom && geom.rings) rawRings = geom.rings;
+                else if (geom && geom.type === 'Polygon') rawRings = geom.coordinates;
+                else if (geom && geom.type === 'MultiPolygon') rawRings = geom.coordinates.flat(); 
+
+                if (rawRings) {
+                    let latLngRings = rawRings.map(ring => {
+                        return ring.map(coord => {
+                            // Si la coordenada es > 1000, asumimos que está en POSGAR (EPSG:22185) y la reproyectamos
+                            if (Math.abs(coord[0]) > 1000) { 
+                                let lonLat = proj4("EPSG:22185", "EPSG:4326", [coord[0], coord[1]]);
+                                return [lonLat[1], lonLat[0]]; 
+                            }
+                            // Si ya es Lat/Lng (EPSG:4326)
+                            return [coord[1], coord[0]]; 
+                        });
+                    });
+
+                    let zonaInfo = attr.ZONA || attr.Zona || attr.zona || attr.Name || attr.nombre || 'Desconocida';
+                    let polygon = L.polygon(latLngRings, getBufferStyle(zonaInfo));
+                    
+                    polygon.bindPopup(formatPopupContent(titlePrefix, 'fa-draw-polygon', attr));
+                    layerGroup.addLayer(polygon);
+                }
+            });
+        }
+
+        function processPoints(data) {
+            if (!data.features) return;
+            data.features.forEach(feature => {
+                let attr = feature.attributes || feature.properties || {};
+                let geom = feature.geometry;
+                let lat, lng;
+
+                if (geom && geom.x !== undefined && geom.y !== undefined) {
+                    lng = geom.x; lat = geom.y;
+                } else if (geom && geom.coordinates) {
+                    lng = geom.coordinates[0]; lat = geom.coordinates[1];
+                }
+
+                if (lat !== undefined && lng !== undefined) {
+                    // Reproyectar si está en POSGAR
+                    if (Math.abs(lng) > 1000) {
+                        let lonLat = proj4("EPSG:22185", "EPSG:4326", [lng, lat]);
+                        lng = lonLat[0];
+                        lat = lonLat[1];
+                    }
+                    let marker = L.marker([lat, lng], { icon: getPointIcon(attr) });
+                    marker.bindPopup(formatPopupContent('Establecimiento GI2', 'fa-industry', attr));
+                    pointsLayer.addLayer(marker);
+                }
+            });
+        }
+
+        async function loadDataAutomatically() {
+            const loader = document.getElementById('loader');
+            
+            // Contenedor visual para mostrar errores en pantalla (Toasts)
+            const errorContainer = document.createElement('div');
+            errorContainer.className = 'absolute top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none';
+            document.body.appendChild(errorContainer);
+
+            function showToast(message, isError = true) {
+                const toast = document.createElement('div');
+                toast.className = `p-4 rounded shadow-xl text-white font-medium text-sm flex items-center gap-3 transition-opacity duration-500 pointer-events-auto ${isError ? 'bg-red-600 border border-red-800' : 'bg-emerald-600 border border-emerald-800'}`;
+                toast.innerHTML = `<i class="fa-solid ${isError ? 'fa-triangle-exclamation' : 'fa-circle-check'} text-lg"></i> <span>${message}</span>`;
+                errorContainer.appendChild(toast);
+                setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 15000); // 15 segundos para leerlo
+            }
+
+            try {
+                let bounds = L.latLngBounds([]);
+                let cargados = 0;
+
+                try {
+                    const resZonas = await fetch('Zonas_COU.json');
+                    if(resZonas.ok) {
+                        const dataZonas = await resZonas.json();
+                        processPolygons(dataZonas, zonasLayer, 'Zona COU');
+                        cargados++;
+                    } else {
+                        showToast(`Error 404: No se encontró "Zonas_COU.json". Verifica nombre en GitHub.`);
+                    }
+                } catch(e) { console.log(e); }
+
+                try {
+                    const resBufer = await fetch('BuferActIntRu2021.json');
+                    if(resBufer.ok) {
+                        const dataBufer = await resBufer.json();
+                        processPolygons(dataBufer, buffersLayer, 'Búfer de Zona');
+                        cargados++;
+                    } else {
+                        showToast(`Error 404: No se encontró "BuferActIntRu2021.json". Verifica mayúsculas y minúsculas.`);
+                    }
+                } catch(e) { console.log(e); }
+
+                try {
+                    const resPuntos = await fetch('ActIntRu2021-SAG.json');
+                    if(resPuntos.ok) {
+                        const dataPuntos = await resPuntos.json();
+                        processPoints(dataPuntos);
+                        cargados++;
+                        showToast("¡Establecimientos cargados correctamente!", false);
+                    } else {
+                        showToast(`Error 404: No se encontró "ActIntRu2021-SAG.json". Recuerda que GitHub distingue MAYÚSCULAS de minúsculas.`);
+                    }
+                } catch(e) { console.log(e); }
+
+                if (zonasLayer.getLayers().length > 0) bounds.extend(L.featureGroup(zonasLayer.getLayers()).getBounds());
+                if (buffersLayer.getLayers().length > 0) bounds.extend(L.featureGroup(buffersLayer.getLayers()).getBounds());
+                if (pointsLayer.getLayers().length > 0) bounds.extend(L.featureGroup(pointsLayer.getLayers()).getBounds());
+                
+                if (bounds.isValid()) {
+                    map.fitBounds(bounds.pad(0.1));
+                }
+
+                if (cargados === 0) {
+                    showToast("CRÍTICO: No se cargó ningún archivo. Ve a tu repositorio de GitHub y verifica que los archivos existan y se llamen EXACTAMENTE como pide el código.", true);
+                }
+
+            } catch (error) {
+                console.error("Error general de carga: ", error);
+            } finally {
+                // Ocultar pantalla de carga suavemente
+                loader.style.opacity = '0';
+                setTimeout(() => { loader.style.display = 'none'; }, 500);
+            }
+        }
+
+        // Ejecutar carga automática al iniciar la página
+        window.addEventListener('load', loadDataAutomatically);
+
+    </script>
+</body>
+</html>
