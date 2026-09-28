@@ -1,0 +1,202 @@
+<!-- ... existing code ... -->
+                    <li class="flex gap-3">
+                        <i class="fa-solid fa-truck-fast text-amber-400 mt-1"></i>
+                        <div><strong class="text-white">Art. 14:</strong> Relocalización. <span class="text-slate-400">Fomenta el traslado voluntario a futuros "Corredores GI2" con incentivos en tasas y trámites simplificados.</span></div>
+                    </li>
+                </ul>
+            </section>
+        </div>
+    </div>
+
+    <!-- Contenedor del Mapa -->
+    <div class="flex-1 h-1/2 md:h-full relative bg-slate-800" id="map">
+<!-- ... existing code ... -->
+        // Estilos para Puntos según Actividad mejorado (Ignora tildes y mayúsculas)
+        function getPointIcon(attr) {
+            let markerColor = '#64748b'; // Gris genérico por defecto
+            let iconClass = 'fa-industry';
+            
+            // BÚSQUEDA PROFUNDA: Convertimos TODOS los atributos del punto a un solo texto.
+            // Así, si la actividad dice "Avícola" pero está en la columna "Descripción", "PopupInfo" 
+            // o cualquier otra en lugar de "Name", lo va a encontrar igual.
+            let allText = JSON.stringify(attr).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            
+            if (allText.includes('feedlot') || allText.includes('bovino') || allText.includes('vaca') || allText.includes('tambo') || allText.includes('engorde')) {
+                markerColor = '#ef4444'; // Rojo - Bovinos
+                iconClass = 'fa-cow';
+            } else if (allText.includes('galpon') || allText.includes('ave') || allText.includes('pollo') || allText.includes('avicola') || allText.includes('gallina')) {
+                markerColor = '#3b82f6'; // Azul - Aves
+                iconClass = 'fa-warehouse';
+            } else if (allText.includes('cerdo') || allText.includes('porcino') || allText.includes('chancho') || allText.includes('criadero')) {
+                markerColor = '#ec4899'; // Rosa - Cerdos
+                iconClass = 'fa-piggy-bank';
+            } else if (allText.includes('equino') || allText.includes('caballo') || allText.includes('haras')) {
+                markerColor = '#8b5cf6'; // Violeta - Equinos
+                iconClass = 'fa-horse';
+            } else if (allText.includes('horno') || allText.includes('ladrillo')) {
+                markerColor = '#f59e0b'; // Naranja - Ladrilleras
+                iconClass = 'fa-fire';
+            }
+
+            return L.divIcon({
+                className: 'custom-icon',
+                html: `<div style="background-color: ${markerColor}; width: 30px; height: 30px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);">
+                            <i class="fa-solid ${iconClass} text-white text-xs"></i>
+                       </div>`,
+                iconSize: [30, 30],
+                iconAnchor: [15, 15],
+                popupAnchor: [0, -15]
+            });
+        }
+
+        let zonasLayer = L.layerGroup().addTo(map);
+        let buffersLayer = L.layerGroup().addTo(map);
+        let pointsLayer = L.layerGroup().addTo(map);
+        
+        layerControl.addOverlay(zonasLayer, "Zonas COU");
+        layerControl.addOverlay(buffersLayer, "Búferes");
+        layerControl.addOverlay(pointsLayer, "Establecimientos GI2");
+
+        // --- FUNCIONES PROCESADORAS DE GEOMETRÍA ---
+        
+        // Procesa Polígonos (Zonas y Búferes) y los reproyecta si están en POSGAR 94
+        function processPolygons(data, layerGroup, titlePrefix) {
+            if (!data.features) return;
+            data.features.forEach(feature => {
+                let attr = feature.attributes || feature.properties || {};
+                let geom = feature.geometry;
+                
+                let rawRings = null;
+                if (geom && geom.rings) rawRings = geom.rings;
+                else if (geom && geom.type === 'Polygon') rawRings = geom.coordinates;
+                else if (geom && geom.type === 'MultiPolygon') rawRings = geom.coordinates.flat(); 
+
+                if (rawRings) {
+                    let latLngRings = rawRings.map(ring => {
+                        return ring.map(coord => {
+                            if (Math.abs(coord[0]) > 1000) { // Si es coord POSGAR grandota
+                                let lonLat = proj4("EPSG:22185", "EPSG:4326", [coord[0], coord[1]]);
+                                return [lonLat[1], lonLat[0]];
+                            }
+                            return [coord[1], coord[0]]; // Si ya es WGS84
+                        });
+                    });
+
+                    let zona = attr.ZONA || attr.Zona || attr.zona || attr.Name || 'Desconocida';
+                    let polygon = L.polygon(latLngRings, getBufferStyle(zona));
+                    
+                    let popupContent = `<div class="p-2 max-h-64 overflow-y-auto w-64">
+                        <h3 class="font-bold text-sky-400 text-base mb-2 border-b border-slate-600 pb-1">
+                            <i class="fa-solid fa-draw-polygon mr-1"></i> ${titlePrefix}
+                        </h3>`;
+                    for (const [key, value] of Object.entries(attr)) {
+                        if(value !== null && value !== "") {
+                            popupContent += `<p class="text-sm text-slate-300 mb-1"><strong class="text-slate-100">${key}:</strong> ${value}</p>`;
+                        }
+                    }
+                    popupContent += `</div>`;
+                    
+                    polygon.bindPopup(popupContent);
+                    layerGroup.addLayer(polygon);
+                }
+            });
+        }
+
+        // Procesa Puntos
+        function processPoints(data) {
+            if (!data.features) return;
+            data.features.forEach(feature => {
+                let attr = feature.attributes || feature.properties || {};
+                let geom = feature.geometry;
+                
+                let lat, lng;
+                if (geom && geom.x !== undefined && geom.y !== undefined) {
+                    lng = geom.x; lat = geom.y;
+                } else if (geom && geom.coordinates) {
+                    lng = geom.coordinates[0]; lat = geom.coordinates[1];
+                }
+
+                if (lat !== undefined && lng !== undefined) {
+                    // Reproyectar punto si está en POSGAR 94
+                    if (Math.abs(lng) > 1000) {
+                        let lonLat = proj4("EPSG:22185", "EPSG:4326", [lng, lat]);
+                        lng = lonLat[0];
+                        lat = lonLat[1];
+                    }
+
+                    let marker = L.marker([lat, lng], { icon: getPointIcon(attr) });
+                    
+                    let popupContent = `<div class="p-2 max-h-64 overflow-y-auto w-64">
+                        <h3 class="font-bold text-emerald-400 text-base mb-2 border-b border-slate-600 pb-1">
+                            <i class="fa-solid fa-industry mr-1"></i> Establecimiento
+                        </h3>`;
+                    for (const [key, value] of Object.entries(attr)) {
+                        if(value !== null && value !== "") {
+                            popupContent += `<p class="text-sm text-slate-300 mb-1"><strong class="text-slate-100">${key}:</strong> ${value}</p>`;
+                        }
+                    }
+                    popupContent += `</div>`;
+                    
+                    marker.bindPopup(popupContent);
+                    pointsLayer.addLayer(marker);
+                }
+            });
+        }
+
+        async function loadAllData() {
+            document.getElementById('loader').style.display = 'flex';
+            document.getElementById('loader').classList.remove('opacity-0');
+
+            try {
+                // 1. Cargar Zonas COU (Reemplaza Zonas_COU.json por el nombre exacto de tu archivo)
+                try {
+                    const resZonas = await fetch('./Zonas_COU.json');
+                    if(resZonas.ok) {
+                        const dataZonas = await resZonas.json();
+                        processPolygons(dataZonas, zonasLayer, 'Zona COU');
+                    }
+                } catch(e) { console.log("Capa Zonas_COU no encontrada o error de carga."); }
+
+                // 2. Cargar Búferes
+                try {
+                    const resBufer = await fetch('./BuferActIntRu2021.json');
+                    if(resBufer.ok) {
+                        const dataBufer = await resBufer.json();
+                        processPolygons(dataBufer, buffersLayer, 'Búfer de Zona');
+                    }
+                } catch(e) { console.log("Capa Búferes no encontrada o error de carga."); }
+
+                // 3. Cargar Establecimientos GI2 (Puntos)
+                try {
+                    const resPuntos = await fetch('./ActIntRu2021-SAG.json');
+                    if(resPuntos.ok) {
+                        const dataPuntos = await resPuntos.json();
+                        processPoints(dataPuntos);
+                    }
+                } catch(e) { console.log("Capa Puntos no encontrada o error de carga."); }
+
+                // Ajustar zoom para abarcar todo lo cargado
+                let bounds = L.latLngBounds([]);
+                if (zonasLayer.getLayers().length > 0) bounds.extend(L.featureGroup(zonasLayer.getLayers()).getBounds());
+                if (buffersLayer.getLayers().length > 0) bounds.extend(L.featureGroup(buffersLayer.getLayers()).getBounds());
+                if (pointsLayer.getLayers().length > 0) bounds.extend(L.featureGroup(pointsLayer.getLayers()).getBounds());
+                
+                if (bounds.isValid()) {
+                    map.fitBounds(bounds.pad(0.1));
+                }
+
+            } catch (error) {
+                console.error("Error crítico: ", error);
+                alert("Atención: Para que la carga automática de mapas funcione, debes subir los archivos a GitHub Pages o abrir la web usando un Local Server. El navegador bloquea la carga si abres el archivo con doble click (ruta file:///).");
+            } finally {
+                document.getElementById('loader').classList.add('opacity-0');
+                setTimeout(() => { document.getElementById('loader').style.display = 'none'; }, 300);
+            }
+        }
+
+        // Iniciar la carga al abrir la web
+        loadAllData();
+
+    </script>
+</body>
+</html>
